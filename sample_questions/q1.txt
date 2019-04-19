@@ -1,0 +1,16 @@
+Q1
+あなたの会社にあるオンプレミス環境のコンテンツマネージメントシステムは以下のアーキテクチャを採用しています。
+
+• アプリケーション層 – JBoss アプリケーションサーバー上で動作する Java コード
+• データベース層 – Oracle RMAN バックアップユーティリティを使用して定期的に S3 にバックアップされる Oracle データベース
+• 静的コンテンツ – iSCSIインターフェース経由でアプリケーションサーバにアタッチされた、Gateway Stored VolumeのStorage Gatewayに格納された512GBのコンテンツ
+
+AWS をベースとした災害対策戦略を想定した場合、最も優れた RTO を得られるのものはどれですか?
+
+A. EC2 に Oracle データベースおよび JBoss アプリサーバーをデプロイする。 Amazon S3 から RMAN Oracle バックアップを復元する。Storage Gateway から静的コンテンツの EBS ボリュームを生成し、JBoss EC2 サーバーにアタッチする。
+
+B. RDSでOracle データベースをデプロイする。EC2 に JBoss アプリサーバー をデプロイする。 Amazon Glacier から RMAN Oracle バックアップを復元する。Storage Gateway から静的コンテンツの EBS ボリュームを生成し、JBoss EC2 サーバーにアタッチする。
+
+C. EC2 に Oracle データベースおよび JBoss アプリサーバーをデプロイする。 Amazon S3 から RMAN Oracle バックアップを復元する。Amazon EC2 で稼働する AWS Storage Gateway をiSCSIボリュームとしてJBoss EC2サーバにアタッチして、静的コンテンツを復元する。
+
+D. EC2 に Oracle データベースおよび JBoss アプリサーバーをデプロイする。 Amazon S3 から RMAN Oracle バックアップを復元する。 Amazon EC2 で稼働する AWS Storage Gateway-VTL から静的コンテンツを復元する。
