@@ -1,16 +1,50 @@
+# マネジメントコンソールでIAMユーザーのアクセスキーIDとシークレットアクセスキーを作成
+
+# 以下、ローカルマシンで操作
+# ローカルマシンの環境変数にアクセスキーID等をセット
+export AWS_ACCESS_KEY_ID=xxxx
+export AWS_SECRET_ACCESS_KEY=xxxx
+export AWS_DEFAULT_REGION=ap-northeast-1
+export AWS_DEFAULT_OUTPUT=json
 
 # EC2用、AdministratorAccessをつけたロールを準備。
-# EC2インスタンスを起動。ポート22と8888を解放。ロールを付与。
-# 以下、SSH接続にて操作。
+aws iam create-role --role-name ec2_admin_role --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Sid":"","Effect":"Allow","Principal":{"Service":["ec2.amazonaws.com"]},"Action":"sts:AssumeRole"}]}'
+aws iam attach-role-policy --role-name ec2_admin_role --policy-arn 'arn:aws:iam::aws:policy/AdministratorAccess'
+
+# インスタンスプロファイルを作成し、インスタンスプロファイルにロールを追加
+aws iam create-instance-profile --instance-profile-name ec2_admin_role
+aws iam add-role-to-instance-profile --instance-profile-name ec2_admin_role --role-name ec2_admin_role
+
+# キーペアを生成。秘密鍵をmykey.pemとして保存。
+aws ec2 create-key-pair --key-name mykey --query 'KeyMaterial' --output text > mykey.pem
+chmod 400 mykey.pem
+
+# EC2インスタンスを起動。ポート22と8888を解放。ロール(インスタンスプロファイル)を付与。
+instance_id=$(aws ec2 run-instances --image-id ami-0f9ae750e8274075b --instance-type t2.micro --iam-instance-profile 'Name=ec2_admin_role' --key-name mykey --query 'Instances[].InstanceId' --output text)
+echo $instance_id
+
+# このEC2が使用しているセキュリティグループのIDを取得
+ec2_security_group_id=$(aws ec2 describe-instances --instance-ids $instance_id --query 'Reservations[].Instances[].NetworkInterfaces[].Groups[].GroupId' --output text)
+
+# このEC2が使用しているセキュリティグループにてポート22と8888のアクセスを許可
+aws ec2 authorize-security-group-ingress --group-id $ec2_security_group_id --cidr '0.0.0.0/0' --protocol 'tcp' --port '22'
+aws ec2 authorize-security-group-ingress --group-id $ec2_security_group_id --cidr '0.0.0.0/0' --protocol 'tcp' --port '8888'
+
+# EC2インスタンスのパブリックIPを表示
+public_ip=$(aws ec2 describe-instances --instance-ids $instance_id --query 'Reservations[].Instances[].PublicIpAddress' --output text)
+echo $public_ip
+
+# 以下、立ち上げたEC2インスタンスにSSH接続して操作する。
+ssh -i mykey.pem ec2-user@$public_ip
 
 # Dockerをインストール
 sudo yum -y update
-sudo yum -y install Docker
+sudo yum -y install docker
 sudo systemctl enable --now docker.service
 
 # docker-composeをインストール
-sudo curl -L https://github.com/docker/compose/releases/download/1.21.0/docker-compose-$(uname -s)-$(uname -m) -o /usr/bin/docker-compose
-sudo chmod +x /usr/bin/docker-compose
+sudo curl -L https://github.com/docker/compose/releases/download/1.24.0/docker-compose-`uname -s`-`uname -m` -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
 
 # ec2-userがDockerを使えるようにする
 sudo groupadd docker
@@ -103,7 +137,7 @@ aws ecs create-cluster --cluster-name 'mycluster'
 
 # IAMロール（タスクロール）を作成
 aws iam create-role --role-name "ecs_task_role" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Sid":"","Effect":"Allow","Principal":{"Service":["ecs-tasks.amazonaws.com"]},"Action":"sts:AssumeRole"}]}'
-aws iam attach-role-policy --role-name "ecs_task_role" --policy-arn "arn:aws:iam::aws:policy/AdministratorAccess" --region us-east-1
+aws iam attach-role-policy --role-name "ecs_task_role" --policy-arn "arn:aws:iam::aws:policy/AdministratorAccess"
 ecs_task_role_arn=$(aws iam list-roles --query 'Roles[?RoleName==`ecs_task_role`].Arn' --output text)
 echo $ecs_task_role_arn
 
@@ -112,7 +146,6 @@ aws iam create-role --role-name "ecs_exec_role" --assume-role-policy-document '{
 aws iam attach-role-policy --role-name "ecs_exec_role" --policy-arn "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
 ecs_exec_role_arn=$(aws iam list-roles --query 'Roles[?RoleName==`ecs_exec_role`].Arn' --output text)
 echo $ecs_exec_role_arn
-
 
 # タスク定義ファイルを作成
 cat << EOF > task_def.json
@@ -167,8 +200,7 @@ aws ecs create-service \
 --platform-version "LATEST" \
 --network-configuration file://net_conf.json
 
-
 # 備考:
-# この手順ではaws コマンドだけを使用して進めたが、
+# この手順ではawsコマンドだけを使用して進めたが、
 # より便利なECS CLIを使用することもできる。
 # https://docs.aws.amazon.com/ja_jp/AmazonECS/latest/developerguide/ECS_CLI.html
